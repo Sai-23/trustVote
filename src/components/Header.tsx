@@ -8,13 +8,12 @@ import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "./ui/alert"
 import { Badge } from "./ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip"
+import { ConnectWallet } from "@thirdweb-dev/react"
 
 export function Header() {
   const pathname = usePathname()
   const { 
     account, 
-    connect, 
-    disconnect, 
     isConnected, 
     networkName, 
     isCorrectNetwork,
@@ -108,16 +107,10 @@ export function Header() {
                 </Button>
               )}
               
-              <Button 
-                onClick={isConnected ? disconnect : connect}
-                variant={isConnected ? "outline" : "default"}
-                className={isConnected ? "border-white/20 text-white hover:bg-white/10" : "bg-white text-blue-600 hover:bg-white/90"}
-              >
-                {isConnected ? 
-                  `${account?.slice(0, 6)}...${account?.slice(-4)}` : 
-                  'Connect Wallet'
-                }
-              </Button>
+              <ConnectWallet
+                theme="dark"
+                btnTitle="Connect Wallet"
+              />
             </div>
           </div>
           

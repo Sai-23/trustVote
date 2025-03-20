@@ -6,6 +6,8 @@ import { useVotingContract } from "@/hooks/useVotingContract"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { toast } from "sonner"
+import { FaceScanner } from "@/components/FaceScanner"
+import { FingerprintScanner } from "@/components/FingerprintScanner"
 
 // Store voter registration requests in localStorage
 const STORAGE_KEY = "voter_requests"
@@ -13,6 +15,10 @@ const STORAGE_KEY = "voter_requests"
 interface VoterRequest {
   address: string
   timestamp: number
+  faceData: string
+  fingerprintData: string
+  aadharNumber: string
+  phoneNumber: string
 }
 
 export default function RequestVoterPage() {
@@ -22,6 +28,10 @@ export default function RequestVoterPage() {
   const [isRegistered, setIsRegistered] = useState(false)
   const [hasRequestPending, setHasRequestPending] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [faceData, setFaceData] = useState<string>("")
+  const [fingerprintData, setFingerprintData] = useState<string>("")
+  const [aadharNumber, setAadharNumber] = useState<string>("")
+  const [phoneNumber, setPhoneNumber] = useState<string>("")
 
   useEffect(() => {
     if (!account || !contract) return
@@ -56,6 +66,29 @@ export default function RequestVoterPage() {
     e.preventDefault()
     if (!account) return
 
+    // Validate biometric data
+    if (!faceData) {
+      toast.error("Please scan your face before submitting")
+      return
+    }
+
+    if (!fingerprintData) {
+      toast.error("Please scan your fingerprint before submitting")
+      return
+    }
+
+    // Validate Aadhar number
+    if (!aadharNumber || aadharNumber.length !== 12) {
+      toast.error("Please enter a valid 12-digit Aadhar number")
+      return
+    }
+
+    // Validate phone number
+    if (!phoneNumber || phoneNumber.length !== 10) {
+      toast.error("Please enter a valid 10-digit phone number")
+      return
+    }
+
     try {
       setIsSubmitting(true)
 
@@ -83,7 +116,11 @@ export default function RequestVoterPage() {
       // Add new request
       const newRequest: VoterRequest = {
         address: account,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        faceData: faceData,
+        fingerprintData: fingerprintData,
+        aadharNumber: aadharNumber,
+        phoneNumber: phoneNumber
       }
 
       requests.push(newRequest)
@@ -97,6 +134,14 @@ export default function RequestVoterPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleFaceCaptured = (faceHex: string) => {
+    setFaceData(faceHex)
+  }
+
+  const handleFingerprintCaptured = (fingerprintHex: string) => {
+    setFingerprintData(fingerprintHex)
   }
 
   if (!isConnected) {
@@ -178,9 +223,90 @@ export default function RequestVoterPage() {
               </div>
             </div>
 
+            <FaceScanner onFaceCaptured={handleFaceCaptured} />
+
+            <FingerprintScanner onFingerprintCaptured={handleFingerprintCaptured} />
+
+            {faceData && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Face Data Hex
+                </label>
+                <div className="bg-gray-50 p-3 rounded-md border border-gray-200 overflow-auto">
+                  <code className="text-xs text-gray-800 whitespace-nowrap">{faceData}</code>
+                </div>
+              </div>
+            )}
+
+            {fingerprintData && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fingerprint Data Hex
+                </label>
+                <div className="bg-gray-50 p-3 rounded-md border border-gray-200 overflow-auto">
+                  <code className="text-xs text-gray-800 whitespace-nowrap">{fingerprintData}</code>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Aadhar Number <span className="text-xs text-gray-500">(Required)</span>
+              </label>
+              <input
+                type="text"
+                value={aadharNumber}
+                onChange={(e) => {
+                  // Only allow numbers and limit to 12 digits
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 12);
+                  setAadharNumber(value);
+                }}
+                placeholder="Enter 12-digit Aadhar number"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+              {aadharNumber && aadharNumber.length !== 12 && (
+                <p className="mt-1 text-sm text-red-600">Aadhar number must be 12 digits</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Phone Number <span className="text-xs text-gray-500">(Required)</span>
+              </label>
+              <div className="flex">
+                <span className="inline-flex items-center px-3 py-2 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500">
+                  +91
+                </span>
+                <input
+                  type="text"
+                  value={phoneNumber}
+                  onChange={(e) => {
+                    // Only allow numbers and limit to 10 digits
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setPhoneNumber(value);
+                  }}
+                  placeholder="Enter 10-digit mobile number"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-r-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  required
+                />
+              </div>
+              {phoneNumber && phoneNumber.length !== 10 && (
+                <p className="mt-1 text-sm text-red-600">Phone number must be 10 digits</p>
+              )}
+            </div>
+
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting || 
+                !faceData || 
+                !fingerprintData || 
+                !aadharNumber || 
+                aadharNumber.length !== 12 || 
+                !phoneNumber || 
+                phoneNumber.length !== 10
+              }
               className="w-full"
             >
               {isSubmitting ? "Submitting..." : "Submit Registration Request"}
