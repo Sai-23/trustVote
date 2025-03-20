@@ -20,7 +20,8 @@ export function Header() {
     isCorrectNetwork,
     switchToSepolia,
     error,
-    balance
+    balance,
+    isAdmin
   } = useWallet()
 
   // Format balance to 4 decimal places
@@ -28,46 +29,57 @@ export function Header() {
 
   return (
     <TooltipProvider>
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-gradient-to-r from-indigo-600 to-blue-500 text-white sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex flex-col">
           <div className="flex justify-between items-center">
-            <Link href="/" className="text-2xl font-bold text-blue-600">
-              BlockVote
+            <Link href="/" className="flex items-center space-x-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-2xl font-bold">TrustVote</span>
             </Link>
 
-            <nav className="hidden md:flex items-center space-x-6">
+            <nav className="hidden md:flex items-center space-x-8">
               <Link
                 href="/"
-                className={`font-medium ${pathname === "/" ? "text-blue-600" : "text-gray-600 hover:text-blue-600"}`}
+                className={`font-medium transition-colors ${pathname === "/" ? "text-white" : "text-blue-100 hover:text-white"}`}
               >
                 Home
               </Link>
               <Link
                 href="/vote"
-                className={`font-medium ${pathname === "/vote" ? "text-blue-600" : "text-gray-600 hover:text-blue-600"}`}
+                className={`font-medium transition-colors ${pathname === "/vote" ? "text-white" : "text-blue-100 hover:text-white"}`}
               >
                 Vote
               </Link>
               <Link
                 href="/results"
-                className={`font-medium ${pathname === "/results" ? "text-blue-600" : "text-gray-600 hover:text-blue-600"}`}
+                className={`font-medium transition-colors ${pathname === "/results" ? "text-white" : "text-blue-100 hover:text-white"}`}
               >
                 Results
               </Link>
               <Link
-                href="/admin"
-                className={`font-medium ${pathname === "/admin" ? "text-blue-600" : "text-gray-600 hover:text-blue-600"}`}
+                href="/request-voter"
+                className={`font-medium transition-colors ${pathname === "/request-voter" ? "text-white" : "text-blue-100 hover:text-white"}`}
               >
-                Admin
+                Request to Vote
               </Link>
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className={`font-medium transition-colors ${pathname === "/admin" ? "text-white" : "text-blue-100 hover:text-white"}`}
+                >
+                  Admin
+                </Link>
+              )}
             </nav>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {isConnected && (
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Badge className="mr-2 cursor-help">
+                      <Badge className="bg-white/10 text-white hover:bg-white/20 transition-colors cursor-help">
                         {formattedBalance} ETH
                       </Badge>
                     </TooltipTrigger>
@@ -78,7 +90,7 @@ export function Header() {
                   
                   <Badge 
                     variant={isCorrectNetwork ? "outline" : "destructive"}
-                    className="mr-2"
+                    className={isCorrectNetwork ? "border-white/20 text-white" : ""}
                   >
                     {networkName}
                   </Badge>
@@ -90,7 +102,7 @@ export function Header() {
                   onClick={switchToSepolia}
                   variant="secondary"
                   size="sm"
-                  className="mr-2"
+                  className="bg-white/10 hover:bg-white/20 text-white"
                 >
                   Switch to Sepolia
                 </Button>
@@ -99,6 +111,7 @@ export function Header() {
               <Button 
                 onClick={isConnected ? disconnect : connect}
                 variant={isConnected ? "outline" : "default"}
+                className={isConnected ? "border-white/20 text-white hover:bg-white/10" : "bg-white text-blue-600 hover:bg-white/90"}
               >
                 {isConnected ? 
                   `${account?.slice(0, 6)}...${account?.slice(-4)}` : 
@@ -109,7 +122,7 @@ export function Header() {
           </div>
           
           {error && (
-            <Alert variant="destructive" className="mt-2">
+            <Alert variant="destructive" className="mt-2 bg-red-500/10 border-red-500/20 text-white">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>

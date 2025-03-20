@@ -32,6 +32,10 @@ export function useWallet() {
   const [networkName, setNetworkName] = useState<string>('Unknown Network')
   const [isCorrectNetwork, setIsCorrectNetwork] = useState<boolean>(false)
   const [balance, setBalance] = useState<string>('0')
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // Admin address constant
+  const ADMIN_ADDRESS = "0x1194CD63491865d684A4619b785129230F018730"
 
   // Update network name when chainId changes
   useEffect(() => {
@@ -85,6 +89,7 @@ export function useWallet() {
         const accounts = await provider.listAccounts()
         if (accounts.length > 0) {
           setAccount(accounts[0])
+          setIsAdmin(accounts[0].toLowerCase() === ADMIN_ADDRESS.toLowerCase())
         }
 
         // Handle account changes
@@ -92,6 +97,7 @@ export function useWallet() {
           const ethereum = window.ethereum
           ethereum.on('accountsChanged', (accounts: string[]) => {
             setAccount(accounts[0] || null)
+            setIsAdmin(accounts[0]?.toLowerCase() === ADMIN_ADDRESS.toLowerCase())
           })
 
           // Handle chain changes
@@ -163,6 +169,7 @@ export function useWallet() {
       // Request account access
       const accounts = await provider.send('eth_requestAccounts', [])
       setAccount(accounts[0])
+      setIsAdmin(accounts[0].toLowerCase() === ADMIN_ADDRESS.toLowerCase())
 
       // Check and switch to Sepolia if needed
       const chainId = await provider.send('eth_chainId', [])
@@ -216,6 +223,8 @@ export function useWallet() {
   const disconnect = () => {
     setAccount(null)
     setError(null)
+    setIsAdmin(false)
+    setBalance('0')
   }
 
   return {
@@ -229,6 +238,7 @@ export function useWallet() {
     chainId,
     networkName,
     isCorrectNetwork,
-    balance
+    balance,
+    isAdmin
   }
 } 

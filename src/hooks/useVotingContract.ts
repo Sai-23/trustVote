@@ -12,9 +12,14 @@ export function useVotingContract() {
   const [totalCandidates, setTotalCandidates] = useState(0)
   const [totalVotes, setTotalVotes] = useState(0)
   const [admin, setAdmin] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!provider) return
+    if (!provider) {
+      setContract(null)
+      setIsLoading(false)
+      return
+    }
 
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
@@ -37,12 +42,28 @@ export function useVotingContract() {
         setTotalCandidates(Number(total))
         setTotalVotes(Number(votes))
         setAdmin(adminAddr)
+        setIsLoading(false)
       } catch (error) {
         console.error('Error loading contract data:', error)
+        setIsLoading(false)
       }
     }
 
     loadContractData()
+
+    // Subscribe to contract events
+    contract.on("VotingStarted", () => setVotingActive(true))
+    contract.on("VotingEnded", () => setVotingActive(false))
+    contract.on("VoteCast", () => {
+      loadContractData() // Refresh data when a vote is cast
+    })
+    contract.on("CandidateAdded", () => {
+      loadContractData() // Refresh data when a candidate is added
+    })
+
+    return () => {
+      contract.removeAllListeners()
+    }
   }, [provider])
 
   return {
@@ -51,7 +72,6 @@ export function useVotingContract() {
     totalCandidates,
     totalVotes,
     admin,
-    isLoading: !contract
+    isLoading
   }
-}
-
+} 

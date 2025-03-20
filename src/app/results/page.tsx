@@ -1,75 +1,98 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import type { Candidate } from "@/lib/contract"
+import { useEffect, useState } from "react"
 import { useVotingContract } from "@/hooks/useVotingContract"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
+import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "sonner"
+
+interface Candidate {
+  name: string
+  voteCount: number
+}
 
 export default function ResultsPage() {
-  const { contract, totalCandidates, totalVotes } = useVotingContract()
+  const { contract, isLoading: contractLoading } = useVotingContract()
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [totalVotes, setTotalVotes] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchCandidates = async () => {
-      if (!contract || !totalCandidates) return
+    if (!contract) return
 
+    const loadResults = async () => {
       try {
-        const candidatesList: Candidate[] = []
-        for (let i = 0; i < totalCandidates; i++) {
-          const candidate = await contract.getCandidate(i)
-          candidatesList.push({
-            id: Number(candidate.id),
-            name: candidate.name,
-            voteCount: Number(candidate.voteCount),
-          })
+        const totalCandidatesCount = await contract.totalCandidates()
+        const candidatePromises = []
+        
+        for (let i = 0; i < totalCandidatesCount; i++) {
+          candidatePromises.push(contract.candidates(i))
         }
-        setCandidates(candidatesList)
-      } catch (err) {
-        console.error("Error fetching candidates:", err)
-      } finally {
+        
+        const candidateResults = await Promise.all(candidatePromises)
+        const totalVotesCount = await contract.totalVotes()
+        
+        setCandidates(candidateResults.map(candidate => ({
+          name: candidate.name,
+          voteCount: Number(candidate.voteCount)
+        })))
+        setTotalVotes(Number(totalVotesCount))
+        setIsLoading(false)
+      } catch (error) {
+        console.error("Error loading results:", error)
+        toast.error("Failed to load election results")
         setIsLoading(false)
       }
     }
 
-    fetchCandidates()
-  }, [contract, totalCandidates])
+    loadResults()
+  }, [contract])
 
-  if (isLoading) {
+  if (isLoading || contractLoading) {
     return (
-      <div className="container mx-auto px-4 py-8 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-gray-600">Loading results...</p>
+      <div className="container mx-auto px-4 py-12">
+        <div className="max-w-3xl mx-auto">
+          <Skeleton className="h-8 w-64 mb-4 mx-auto" />
+          <Skeleton className="h-4 w-96 mb-8 mx-auto" />
+          <div className="grid gap-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-center mb-2">Election Results</h1>
-        <p className="text-center text-gray-600 mb-8">Total Votes Cast: {totalVotes}</p>
+    <div className="container mx-auto px-4 py-12">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Election Results</h1>
+          <p className="text-gray-600">Total Votes Cast: {totalVotes}</p>
+        </div>
 
-        <div className="space-y-4">
-          {candidates.map((candidate) => {
+        <div className="grid gap-6">
+          {candidates.map((candidate, index) => {
             const percentage = totalVotes > 0 ? (candidate.voteCount / totalVotes) * 100 : 0
-
+            
             return (
-              <Card key={candidate.id}>
-                <CardHeader>
-                  <CardTitle>{candidate.name}</CardTitle>
-                  <CardDescription>Candidate #{candidate.id + 1}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Progress value={percentage} />
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>{candidate.voteCount} votes</span>
-                      <span>{percentage.toFixed(1)}%</span>
-                    </div>
+              <Card key={index} className="p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">{candidate.name}</h3>
+                    <span className="text-sm font-medium text-gray-600">
+                      {candidate.voteCount} votes ({percentage.toFixed(1)}%)
+                    </span>
                   </div>
-                </CardContent>
+                  
+                  <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-500"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
               </Card>
             )
           })}

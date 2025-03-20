@@ -136,66 +136,6 @@ export const CONTRACT_ABI: ContractInterface = [
   {
     inputs: [
       {
-        internalType: "uint256",
-        name: "_candidateId",
-        type: "uint256",
-      },
-    ],
-    name: "getCandidate",
-    outputs: [
-      {
-        components: [
-          {
-            internalType: "uint256",
-            name: "id",
-            type: "uint256",
-          },
-          {
-            internalType: "string",
-            name: "name",
-            type: "string",
-          },
-          {
-            internalType: "uint256",
-            name: "voteCount",
-            type: "uint256",
-          },
-        ],
-        internalType: "struct BlockchainVoting.Candidate",
-        name: "",
-        type: "tuple",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "_voter",
-        type: "address",
-      },
-    ],
-    name: "isverifyVoter",
-    outputs: [
-      {
-        internalType: "bool",
-        name: "hasVoted",
-        type: "bool",
-      },
-      {
-        internalType: "uint256",
-        name: "vote1",
-        type: "uint256",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
         internalType: "address",
         name: "_voter",
         type: "address",
@@ -293,7 +233,7 @@ export const CONTRACT_ABI: ContractInterface = [
     ],
     stateMutability: "view",
     type: "function",
-  },
+  }
 ]
 
 export type Candidate = {
