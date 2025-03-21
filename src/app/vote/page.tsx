@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import { BiometricVerification } from "@/components/BiometricVerification"
 
 export default function VotePage() {
   const { contract, isLoading: contractLoading } = useVotingContract()
@@ -18,6 +19,10 @@ export default function VotePage() {
   const [hasVoted, setHasVoted] = useState(false)
   const [isRegistered, setIsRegistered] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [verificationData, setVerificationData] = useState<{faceData: string, fingerprintData: string} | null>(null)
+  const [isFetchingVerificationData, setIsFetchingVerificationData] = useState(false)
+  const [isVerified, setIsVerified] = useState(false)
+  const [showVerification, setShowVerification] = useState(false)
 
   useEffect(() => {
     if (!contract || !account) return
@@ -61,8 +66,60 @@ export default function VotePage() {
     loadCandidates()
   }, [contract])
 
+  // Fetch voter verification data when needed
+  const fetchVerificationData = async () => {
+    if (!account || !isRegistered) return
+    
+    try {
+      setIsFetchingVerificationData(true)
+      
+      const response = await fetch(`/api/verify-voter?address=${account}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          // For demo/development, if the voter is not found in our database
+          // but is registered on-chain, we'll use dummy verification data
+          setVerificationData({
+            faceData: "0x123456789abcdef", // Dummy face data
+            fingerprintData: "0x987654321fedcba" // Dummy fingerprint data
+          })
+          console.warn("Using dummy verification data for development")
+        } else {
+          throw new Error(`Failed to fetch verification data: ${response.statusText}`)
+        }
+      } else {
+        const data = await response.json()
+        setVerificationData(data)
+      }
+      
+      setShowVerification(true)
+    } catch (error) {
+      console.error("Error fetching verification data:", error)
+      toast.error("Failed to fetch verification data")
+      // For demo purposes, use dummy data even on error
+      setVerificationData({
+        faceData: "0x123456789abcdef", // Dummy face data
+        fingerprintData: "0x987654321fedcba" // Dummy fingerprint data
+      })
+      setShowVerification(true)
+    } finally {
+      setIsFetchingVerificationData(false)
+    }
+  }
+
+  const handleStartVoting = () => {
+    fetchVerificationData()
+  }
+
+  const handleVerificationComplete = (success: boolean) => {
+    setIsVerified(success)
+    if (success) {
+      toast.success("Identity verified successfully! You can now vote.")
+    }
+  }
+
   const handleVote = async () => {
-    if (!contract || selectedCandidate === null) return
+    if (!contract || selectedCandidate === null || !isVerified) return
     
     try {
       setIsVoting(true)
@@ -163,40 +220,72 @@ export default function VotePage() {
           <p className="text-gray-600">Select your preferred candidate from the list below.</p>
         </div>
 
-        <div className="grid gap-4">
-          {candidates.map((candidate, index) => (
-            <Card
-              key={index}
-              className={`p-6 cursor-pointer transition-all hover:shadow-md ${
-                selectedCandidate === index ? "ring-2 ring-indigo-500 bg-indigo-50" : ""
-              }`}
-              onClick={() => setSelectedCandidate(index)}
-            >
-              <div className="flex items-center gap-4">
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  selectedCandidate === index ? "border-indigo-500 bg-indigo-500" : "border-gray-300"
-                }`}>
-                  {selectedCandidate === index && (
-                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-                <span className="text-lg font-medium text-gray-900">{candidate}</span>
-              </div>
+        {showVerification && verificationData ? (
+          // Show biometric verification first
+          <div className="mb-12">
+            <BiometricVerification 
+              faceData={verificationData.faceData}
+              fingerprintData={verificationData.fingerprintData}
+              onVerificationComplete={handleVerificationComplete}
+            />
+          </div>
+        ) : !isVerified ? (
+          // Show start voting button
+          <div className="mb-12 text-center">
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4">Identity Verification Required</h2>
+              <p className="text-gray-600 mb-6">
+                To ensure the integrity of the voting process, we need to verify your identity before you can vote.
+              </p>
+              <Button
+                onClick={handleStartVoting}
+                disabled={isFetchingVerificationData}
+                className="w-full sm:w-auto"
+              >
+                {isFetchingVerificationData ? "Loading..." : "Start Verification"}
+              </Button>
             </Card>
-          ))}
-        </div>
+          </div>
+        ) : null}
 
-        <div className="mt-8 flex justify-center">
-          <Button
-            onClick={handleVote}
-            disabled={selectedCandidate === null || isVoting}
-            className="w-full sm:w-auto"
-          >
-            {isVoting ? "Recording Vote..." : "Submit Vote"}
-          </Button>
-        </div>
+        {isVerified && (
+          <>
+            <div className="grid gap-4">
+              {candidates.map((candidate, index) => (
+                <Card
+                  key={index}
+                  className={`p-6 cursor-pointer transition-all hover:shadow-md ${
+                    selectedCandidate === index ? "ring-2 ring-indigo-500 bg-indigo-50" : ""
+                  }`}
+                  onClick={() => setSelectedCandidate(index)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                      selectedCandidate === index ? "border-indigo-500 bg-indigo-500" : "border-gray-300"
+                    }`}>
+                      {selectedCandidate === index && (
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-lg font-medium text-gray-900">{candidate}</span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            <div className="mt-8 flex justify-center">
+              <Button
+                onClick={handleVote}
+                disabled={selectedCandidate === null || isVoting}
+                className="w-full sm:w-auto"
+              >
+                {isVoting ? "Recording Vote..." : "Submit Vote"}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

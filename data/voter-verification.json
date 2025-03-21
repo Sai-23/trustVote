@@ -1,0 +1,23 @@
+[
+  {
+    "address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    "faceData": "0xf3a5b77c2e6a4f8c9d1e8a2b7c6d5e4f3",
+    "fingerprintData": "0x7a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4",
+    "verified": true,
+    "registrationDate": "2023-09-15T10:30:00Z"
+  },
+  {
+    "address": "0x8aF3d94Fbce1FcA03a4C3A0475B2f7eBe8c4C3b2",
+    "faceData": "0xc4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9",
+    "fingerprintData": "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+    "verified": true,
+    "registrationDate": "2023-09-16T14:45:00Z"
+  },
+  {
+    "address": "0xCd3B4EfF5A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D",
+    "faceData": "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", 
+    "fingerprintData": "0xd4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a9",
+    "verified": true,
+    "registrationDate": "2023-09-17T09:15:00Z"
+  }
+] 
