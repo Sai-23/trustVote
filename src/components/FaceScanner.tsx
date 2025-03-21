@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Camera, X, RefreshCw } from "lucide-react";
+import { Camera, X, RefreshCw, User } from "lucide-react";
 
 interface FaceScannerProps {
   onFaceCaptured: (faceHex: string) => void;
@@ -15,6 +15,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -24,6 +25,68 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
   const reloadCamera = useCallback(() => {
     setCameraReloadKey((prev) => prev + 1);
   }, []);
+
+  // Switch to demo mode
+  const switchToDemoMode = useCallback(() => {
+    // Close any existing camera stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
+    setDemoMode(true);
+    setError(null);
+    setIsLoading(false);
+    
+    // Generate a simple placeholder image instead of using the camera
+    setTimeout(() => {
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+          // Set canvas size
+          canvas.width = 300;
+          canvas.height = 300;
+          
+          // Fill background
+          ctx.fillStyle = '#f0f0f0';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw face silhouette
+          ctx.fillStyle = '#a0a0a0';
+          ctx.beginPath();
+          ctx.arc(150, 120, 80, 0, Math.PI * 2); // Head
+          ctx.fill();
+          
+          ctx.beginPath();
+          ctx.arc(150, 240, 50, 0, Math.PI); // Shoulders
+          ctx.fill();
+          
+          // Draw demo mode text
+          ctx.fillStyle = '#606060';
+          ctx.font = '16px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('DEMO MODE', 150, 190);
+          
+          // Convert to data URL
+          const imageData = canvas.toDataURL('image/png');
+          setCapturedImage(imageData);
+          setIsCaptured(true);
+          
+          // Generate a random hex value for face data
+          const hexValue = '0x' + Array.from({length: 64}, () => 
+            Math.floor(Math.random() * 16).toString(16)).join('');
+          
+          onFaceCaptured(hexValue);
+        }
+      }
+    }, 500);
+  }, [onFaceCaptured]);
 
   // Open camera
   const openCamera = async () => {
@@ -139,8 +202,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
     } catch (error: any) {
       console.error("Error accessing camera:", error);
       setError(
-        error.message ||
-          "Failed to access camera. Please make sure you have granted camera permissions."
+        "Failed to access camera. Try using demo mode instead."
       );
       setIsCameraOpen(false);
     } finally {
@@ -182,14 +244,14 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
                   "Video dimensions are zero, stream might not be working properly"
                 );
                 setError(
-                  "Camera stream doesn't appear to be working. Please try again or use a different browser."
+                  "Camera stream doesn't appear to be working. Try demo mode instead."
                 );
               }
             }, 1000); // Check after 1 second
           })
           .catch((err) => {
             console.error("Error playing video:", err);
-            setError("Failed to start video stream. Please try again.");
+            setError("Failed to start video stream. Try demo mode instead.");
           });
       }
     } else {
@@ -291,6 +353,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
   const resetScan = () => {
     setCapturedImage(null);
     setIsCaptured(false);
+    setDemoMode(false);
   };
 
   // Convert image to hex
@@ -328,20 +391,39 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
       </div>
 
       {!isCameraOpen && !isCaptured && (
-        <Button
-          onClick={openCamera}
-          variant="outline"
-          className="w-full flex items-center justify-center gap-2"
-          disabled={isLoading}
-        >
-          <Camera size={18} />
-          {isLoading ? "Starting Camera..." : "Scan Face"}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            onClick={openCamera}
+            variant="outline"
+            className="flex-1 flex items-center justify-center gap-2"
+            disabled={isLoading}
+          >
+            <Camera size={18} />
+            {isLoading ? "Starting Camera..." : "Scan Face"}
+          </Button>
+          
+          <Button
+            onClick={switchToDemoMode}
+            variant="outline"
+            className="flex-1 flex items-center justify-center gap-2"
+          >
+            <User size={18} />
+            Use Demo Mode
+          </Button>
+        </div>
       )}
 
       {error && (
-        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-md">
-          {error}
+        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-md flex justify-between items-center">
+          <div>{error}</div>
+          <Button
+            variant="link"
+            size="sm"
+            onClick={switchToDemoMode}
+            className="text-blue-500 p-0 h-auto"
+          >
+            Use Demo Mode
+          </Button>
         </div>
       )}
 
@@ -398,6 +480,15 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
               >
                 Try reloading
               </Button>
+              or
+              <Button
+                variant="link"
+                size="sm"
+                className="px-1 py-0 h-auto text-xs text-blue-500"
+                onClick={switchToDemoMode}
+              >
+                use demo mode
+              </Button>
             </p>
 
             {/* Additional controls for when camera might be having issues */}
@@ -435,6 +526,11 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
                 className="w-full h-auto"
                 style={{ maxHeight: "320px", objectFit: "contain" }}
               />
+              {demoMode && (
+                <div className="bg-yellow-100 text-yellow-800 text-xs p-1 text-center">
+                  Demo Mode - Using simulated face data
+                </div>
+              )}
             </div>
 
             <Button onClick={resetScan} variant="outline" className="w-full">
