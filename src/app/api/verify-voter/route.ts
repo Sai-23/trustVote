@@ -1,23 +1,5 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-// Path to the JSON data file
-const DATA_FILE_PATH = path.join(process.cwd(), "data", "voter-verification.json");
-
-// Helper function to read voter verification data
-function readVoterVerificationData() {
-  try {
-    if (!fs.existsSync(DATA_FILE_PATH)) {
-      return [];
-    }
-    const data = fs.readFileSync(DATA_FILE_PATH, "utf8");
-    return JSON.parse(data);
-  } catch (error) {
-    console.error("Error reading voter verification data:", error);
-    return [];
-  }
-}
+import { getVoterRegistration } from '@/lib/firebaseServices';
 
 // GET method to retrieve verification data for a specific voter
 export async function GET(request: Request) {
@@ -32,17 +14,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Read the voter verification data
-    const voterData = readVoterVerificationData();
+    // Get voter verification data from Firebase
+    const voter = await getVoterRegistration(address);
     
-    // Find the voter with the matching address
-    const voter = voterData.find(
-      (voter: any) => voter.address.toLowerCase() === address.toLowerCase()
-    );
-
-    if (!voter) {
+    if (!voter || voter.status !== 'approved') {
       return NextResponse.json(
-        { error: "Voter verification data not found" },
+        { error: "Voter verification data not found or not approved" },
         { status: 404 }
       );
     }

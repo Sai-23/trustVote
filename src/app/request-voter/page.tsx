@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { FaceScanner } from "@/components/FaceScanner";
 import { FingerprintScanner } from "@/components/FingerprintScanner";
+import { getVoterRegistration } from "@/lib/firebaseServices";
 
 // Store voter registration requests in localStorage
 const STORAGE_KEY = "voter_requests";
@@ -46,19 +47,12 @@ export default function RequestVoterPage() {
         const voter = await contract.voters(account);
         setIsRegistered(voter.isRegistered);
 
-        // Check if there's a pending request via API
+        // Check if there's a pending request via Firebase
         try {
-          const response = await fetch("/api/voters");
-          if (response.ok) {
-            const requests = await response.json();
-            setHasRequestPending(
-              requests.some(
-                (req: any) =>
-                  req.address.toLowerCase() === account.toLowerCase() &&
-                  req.status === "pending"
-              )
-            );
-          }
+          const voterRegistration = await getVoterRegistration(account);
+          setHasRequestPending(
+            voterRegistration !== null && voterRegistration.status === "pending"
+          );
         } catch (apiError) {
           console.error("Error checking pending requests:", apiError);
           // Fallback to localStorage for backward compatibility
@@ -95,7 +89,7 @@ export default function RequestVoterPage() {
 
       try {
         const voter = await contract.voters(account);
-        if (voter.isRegistered) {
+      if (voter.isRegistered) {
           toast.error("This wallet is already registered as a voter");
           return;
         }
@@ -615,4 +609,4 @@ export default function RequestVoterPage() {
       </div>
     </div>
   );
-}
+} 

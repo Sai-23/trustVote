@@ -3,7 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Camera, X, RefreshCw, User } from "lucide-react";
+import { Camera, X, RefreshCw, User, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 interface FaceScannerProps {
   onFaceCaptured: (faceHex: string) => void;
@@ -20,6 +21,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraReloadKey, setCameraReloadKey] = useState(0);
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
   // Force video element to reload if needed
   const reloadCamera = useCallback(() => {
@@ -27,72 +29,172 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
   }, []);
 
   // Switch to demo mode
-  const switchToDemoMode = useCallback(() => {
-    // Close any existing camera stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+  const switchToDemoMode = () => {
+    console.log("Switching to demo mode");
+    
+    // Close camera if open
+    if (isCameraOpen) {
+      closeCamera();
     }
     
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    
-    setDemoMode(true);
+    // Clear any existing errors
     setError(null);
-    setIsLoading(false);
     
-    // Generate a simple placeholder image instead of using the camera
-    setTimeout(() => {
-      if (canvasRef.current) {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
+    // Enable demo mode
+    setDemoMode(true);
+    
+    // Generate a demo face image programmatically
+    if (canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        // Set canvas size
+        canvas.width = 300;
+        canvas.height = 300;
         
-        if (ctx) {
-          // Set canvas size
-          canvas.width = 300;
-          canvas.height = 300;
-          
-          // Fill background
-          ctx.fillStyle = '#f0f0f0';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // Draw face silhouette
-          ctx.fillStyle = '#a0a0a0';
-          ctx.beginPath();
-          ctx.arc(150, 120, 80, 0, Math.PI * 2); // Head
-          ctx.fill();
-          
-          ctx.beginPath();
-          ctx.arc(150, 240, 50, 0, Math.PI); // Shoulders
-          ctx.fill();
-          
-          // Draw demo mode text
-          ctx.fillStyle = '#606060';
-          ctx.font = '16px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('DEMO MODE', 150, 190);
-          
-          // Convert to data URL
-          const imageData = canvas.toDataURL('image/png');
-          setCapturedImage(imageData);
-          setIsCaptured(true);
-          
-          // Generate a random hex value for face data
-          const hexValue = '0x' + Array.from({length: 64}, () => 
-            Math.floor(Math.random() * 16).toString(16)).join('');
-          
-          onFaceCaptured(hexValue);
+        // Fill background
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw face silhouette
+        ctx.fillStyle = '#a0a0a0';
+        ctx.beginPath();
+        ctx.arc(150, 120, 80, 0, Math.PI * 2); // Head
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(150, 240, 50, 0, Math.PI); // Shoulders
+        ctx.fill();
+        
+        // Draw eyes
+        ctx.fillStyle = '#555555';
+        ctx.beginPath();
+        ctx.arc(120, 110, 12, 0, Math.PI * 2); // Left eye
+        ctx.arc(180, 110, 12, 0, Math.PI * 2); // Right eye
+        ctx.fill();
+        
+        // Draw smile
+        ctx.beginPath();
+        ctx.arc(150, 140, 40, 0.2, Math.PI - 0.2);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#555555';
+        ctx.stroke();
+        
+        // Draw demo mode text
+        ctx.fillStyle = '#606060';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('DEMO MODE', 150, 190);
+        
+        // Convert to data URL
+        const imageData = canvas.toDataURL('image/png');
+        setCapturedImage(imageData);
+      }
+    }
+    
+    setIsCaptured(true);
+    
+    // Generate a consistent hex for demo mode
+    const demoHex = "0x7465737466616365303031"; // "testface001" in hex
+    
+    // Notify parent
+    onFaceCaptured(demoHex);
+    
+    toast.success("Demo mode enabled. Using sample face data.");
+  };
+
+  // Check if cameras are available
+  const checkCameraAvailability = async (): Promise<boolean> => {
+    try {
+      // Check if we're in a secure context (required for camera API)
+      if (typeof window !== 'undefined' && window.isSecureContext === false) {
+        console.warn("Not in a secure context, camera API may not be available");
+        return false;
+      }
+      
+      // Check if the mediaDevices API is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        console.warn("MediaDevices API not available");
+        return false;
+      }
+      
+      // Get list of all media devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      
+      // Filter to only camera/video devices
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      
+      console.log(`Found ${videoDevices.length} video input devices:`, 
+        videoDevices.map(d => ({ deviceId: d.deviceId, label: d.label || 'Unnamed camera' })));
+      
+      return videoDevices.length > 0;
+    } catch (err) {
+      console.error("Error checking camera availability:", err);
+      return false;
+    }
+  };
+
+  // Check camera permissions
+  const checkCameraPermissions = async (): Promise<boolean> => {
+    try {
+      // Check if the permissions API is available
+      if (navigator.permissions && navigator.permissions.query) {
+        const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        console.log("Camera permission status:", result.state);
+        
+        if (result.state === 'denied') {
+          console.warn("Camera permission denied");
+          return false;
         }
       }
-    }, 500);
-  }, [onFaceCaptured]);
+      
+      return true;
+    } catch (err) {
+      console.error("Error checking camera permissions:", err);
+      // If we can't check permissions, we'll try to access the camera anyway
+      return true;
+    }
+  };
 
   // Open camera
   const openCamera = async () => {
     try {
       setIsLoading(true);
       setError(null);
+      
+      // Track attempt
+      setFailedAttempts(prev => prev + 1);
+
+      console.log("Checking camera availability...");
+      const hasCameras = await checkCameraAvailability();
+      
+      if (!hasCameras) {
+        console.warn("No cameras detected on this device");
+        setError("No camera detected on this device. Please use demo mode instead.");
+        setIsLoading(false);
+        
+        // Auto-switch to demo mode after multiple failures
+        if (failedAttempts >= 2) {
+          console.log("Multiple camera failures, auto-switching to demo mode");
+          setTimeout(() => switchToDemoMode(), 1500);
+        }
+        return;
+      }
+      
+      // Check permissions
+      const hasPermission = await checkCameraPermissions();
+      if (!hasPermission) {
+        setError("Camera permission denied. Please allow camera access in your browser settings or use demo mode.");
+        setIsLoading(false);
+        
+        // Auto-switch to demo mode after multiple failures
+        if (failedAttempts >= 2) {
+          console.log("Multiple camera failures, auto-switching to demo mode");
+          setTimeout(() => switchToDemoMode(), 1500);
+        }
+        return;
+      }
 
       console.log("Attempting to open camera...");
 
@@ -130,6 +232,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
 
       // Fallback options if basic constraint fails
       const fallbackConstraints = [
+        // Low resolution option
         {
           video: {
             width: { ideal: 320 },
@@ -137,6 +240,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
           },
           audio: false,
         },
+        // Front camera explicit option
         {
           video: {
             width: { ideal: 640 },
@@ -145,12 +249,22 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
           },
           audio: false,
         },
+        // Back camera option
         {
           video: {
             facingMode: "environment",
           },
           audio: false,
         },
+        // Minimal requirements option
+        {
+          video: {
+            width: { ideal: 160 },
+            height: { ideal: 120 },
+            frameRate: { ideal: 10 }
+          },
+          audio: false,
+        }
       ];
 
       let stream = null;
@@ -175,6 +289,7 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
       }
 
       if (!stream) {
+        console.error("All camera access attempts failed");
         throw new Error(
           `All camera access attempts failed: ${errorDetails.join(", ")}`
         );
@@ -201,10 +316,31 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
       }, 100);
     } catch (error: any) {
       console.error("Error accessing camera:", error);
-      setError(
-        "Failed to access camera. Try using demo mode instead."
-      );
+      
+      // Check if it's a device not found error
+      if (error.message && error.message.includes("NotFoundError") || 
+          error.message && error.message.includes("Requested device not found")) {
+        setError(
+          "No camera detected or camera is in use by another application. Please use demo mode."
+        );
+      } else if (error.message && error.message.includes("Permission denied") || 
+                error.message && error.message.includes("NotAllowedError")) {
+        setError(
+          "Camera access permission denied. Please allow camera access or use demo mode."
+        );
+      } else {
+        setError(
+          "Failed to access camera. You may try demo mode instead."
+        );
+      }
+      
       setIsCameraOpen(false);
+      
+      // Auto-switch to demo mode after multiple failures
+      if (failedAttempts >= 2) {
+        console.log("Multiple camera failures, auto-switching to demo mode");
+        setTimeout(() => switchToDemoMode(), 1500);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -381,6 +517,33 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
     onFaceCaptured(hex);
   };
 
+  // Error UI component
+  const ErrorWithDemoOption = () => {
+    if (!error) return null;
+    
+    return (
+      <div className="p-4 border border-red-200 bg-red-50 rounded-md space-y-3">
+        <div className="flex items-start gap-2">
+          <AlertCircle className="text-red-500 h-5 w-5 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-red-700">{error}</div>
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-gray-700">
+            You can continue using the demo mode instead:
+          </p>
+          <Button 
+            onClick={switchToDemoMode}
+            className="bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center gap-2"
+          >
+            <User size={16} />
+            Continue with Demo Mode
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -390,7 +553,10 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
         <span className="text-xs text-gray-500">(Required)</span>
       </div>
 
-      {!isCameraOpen && !isCaptured && (
+      {/* Error message with demo option */}
+      {error && <ErrorWithDemoOption />}
+
+      {!isCameraOpen && !isCaptured && !error && (
         <div className="flex flex-col sm:flex-row gap-2">
           <Button
             onClick={openCamera}
@@ -408,20 +574,6 @@ export function FaceScanner({ onFaceCaptured }: FaceScannerProps) {
             className="flex-1 flex items-center justify-center gap-2"
           >
             <User size={18} />
-            Use Demo Mode
-          </Button>
-        </div>
-      )}
-
-      {error && (
-        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-md flex justify-between items-center">
-          <div>{error}</div>
-          <Button
-            variant="link"
-            size="sm"
-            onClick={switchToDemoMode}
-            className="text-blue-500 p-0 h-auto"
-          >
             Use Demo Mode
           </Button>
         </div>

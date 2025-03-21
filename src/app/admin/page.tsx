@@ -11,15 +11,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Candidate } from "@/lib/contract";
+import { getAllVoterRegistrations, updateVoterRegistrationStatus, VoterRegistration } from "@/lib/firebaseServices";
+import { Timestamp } from "firebase/firestore";
 
-interface VoterRequest {
-  address: string;
-  timestamp: number;
-  status?: string;
-  faceData?: string;
-  fingerprintData?: string;
-  aadharNumber?: string;
-  phoneNumber?: string;
+interface VoterRequest extends Omit<VoterRegistration, 'createdAt' | 'updatedAt'> {
+  id?: string;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
+  timestamp?: number; // For backward compatibility
 }
 
 export default function AdminPage() {
@@ -54,27 +53,16 @@ export default function AdminPage() {
   }, [contract]);
 
   useEffect(() => {
-    // Load voter requests from API
-    const fetchVoterRequests = async () => {
+    const loadVoterRequests = async () => {
+      // Load voter requests from API
       try {
-        const response = await fetch("/api/voters");
-        if (response.ok) {
-          const requests = await response.json();
-          // Filter only pending requests
-          const pendingRequests = requests.filter(
-            (req: VoterRequest) =>
-              req.status === "pending" || req.status === undefined
-          );
-          setVoterRequests(pendingRequests);
-        } else {
-          console.error("Failed to fetch voter requests from API");
-          // Fallback to localStorage for backward compatibility
-          const storedVoters = localStorage.getItem("voter_requests");
-          if (storedVoters) {
-            const parsedData: VoterRequest[] = JSON.parse(storedVoters);
-            setVoterRequests(parsedData);
-          }
-        }
+        const requests = await getAllVoterRegistrations();
+        // Filter only pending requests
+        const pendingRequests = requests.filter(
+          (req: VoterRequest) =>
+            req.status === "pending" || req.status === undefined
+        );
+        setVoterRequests(pendingRequests);
       } catch (error) {
         console.error("Error fetching voter requests:", error);
         // Fallback to localStorage for backward compatibility
@@ -86,7 +74,7 @@ export default function AdminPage() {
       }
     };
 
-    fetchVoterRequests();
+    loadVoterRequests();
   }, []);
 
   useEffect(() => {
@@ -97,9 +85,16 @@ export default function AdminPage() {
         setLoadingCandidates(true);
         const candidateCount = await contract.totalCandidates();
         const candidatesArray: Candidate[] = [];
+        
+        // Get list of deleted candidates
+        const deletedCandidates = JSON.parse(localStorage.getItem('deleted_candidates') || '[]');
 
         for (let i = 0; i < candidateCount; i++) {
           const candidate = await contract.candidates(i);
+          
+          // Skip candidates that were marked as deleted
+          if (deletedCandidates.includes(Number(candidate.id))) continue;
+          
           candidatesArray.push({
             id: Number(candidate.id),
             name: candidate.name,
@@ -264,6 +259,39 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteCandidate = async (candidateId: number) => {
+    try {
+      setIsProcessing(true);
+      
+      // Since the contract doesn't have a removeCandidate function,
+      // we'll just hide it from the UI
+      const updatedCandidates = candidates.filter(c => c.id !== candidateId);
+      setCandidates(updatedCandidates);
+      
+      // Store deleted candidates in localStorage to keep track
+      const deletedCandidates = JSON.parse(localStorage.getItem('deleted_candidates') || '[]');
+      if (!deletedCandidates.includes(candidateId)) {
+        deletedCandidates.push(candidateId);
+        localStorage.setItem('deleted_candidates', JSON.stringify(deletedCandidates));
+      }
+      
+      // Dispatch a custom event to notify other pages
+      window.dispatchEvent(new CustomEvent('candidateHidden', { 
+        detail: { 
+          candidateId,
+          timestamp: Date.now()
+        }
+      }));
+      
+      toast.success(`Candidate #${candidateId} hidden from UI`);
+    } catch (error: any) {
+      console.error("Error hiding candidate:", error);
+      toast.error("Failed to hide candidate");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (!isConnected || !isAdmin) {
     return (
       <div className="container mx-auto px-4 py-12">
@@ -358,7 +386,11 @@ export default function AdminPage() {
                         </p>
                         <p className="text-xs text-gray-500">
                           Requested:{" "}
-                          {new Date(request.timestamp).toLocaleDateString()}
+                          {typeof request.timestamp === 'number'
+                            ? new Date(request.timestamp).toLocaleDateString() 
+                            : request.createdAt && request.createdAt.toDate 
+                              ? request.createdAt.toDate().toLocaleDateString()
+                              : "Unknown date"}
                         </p>
                       </div>
                     </div>
@@ -425,6 +457,14 @@ export default function AdminPage() {
                               ID: {candidate.id} | Votes: {candidate.voteCount}
                             </p>
                           </div>
+                          <Button 
+                            variant="destructive" 
+                            size="sm" 
+                            onClick={() => handleDeleteCandidate(candidate.id)}
+                            disabled={isProcessing}
+                          >
+                            Hide
+                          </Button>
                         </div>
                       ))}
                     </div>

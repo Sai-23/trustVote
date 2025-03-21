@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 
 interface Candidate {
+  id: number
   name: string
   voteCount: number
 }
@@ -25,6 +26,9 @@ export default function ResultsPage() {
         const totalCandidatesCount = await contract.totalCandidates()
         const candidatePromises = []
         
+        // Get list of hidden candidates from localStorage
+        const hiddenCandidates = JSON.parse(localStorage.getItem('deleted_candidates') || '[]')
+        
         for (let i = 0; i < totalCandidatesCount; i++) {
           candidatePromises.push(contract.candidates(i))
         }
@@ -32,11 +36,21 @@ export default function ResultsPage() {
         const candidateResults = await Promise.all(candidatePromises)
         const totalVotesCount = await contract.totalVotes()
         
-        setCandidates(candidateResults.map(candidate => ({
-          name: candidate.name,
-          voteCount: Number(candidate.voteCount)
-        })))
-        setTotalVotes(Number(totalVotesCount))
+        // Filter out hidden candidates and map the results
+        const filteredCandidates = candidateResults
+          .filter(candidate => !hiddenCandidates.includes(Number(candidate.id)))
+          .map(candidate => ({
+            id: Number(candidate.id),
+            name: candidate.name,
+            voteCount: Number(candidate.voteCount)
+          }))
+        
+        setCandidates(filteredCandidates)
+        
+        // Recalculate total votes from visible candidates
+        const visibleVotes = filteredCandidates.reduce((sum, candidate) => sum + candidate.voteCount, 0)
+        setTotalVotes(visibleVotes)
+        
         setIsLoading(false)
       } catch (error) {
         console.error("Error loading results:", error)
@@ -46,6 +60,18 @@ export default function ResultsPage() {
     }
 
     loadResults()
+    
+    // Listen for candidate hidden events
+    const handleCandidateHidden = (event: CustomEvent) => {
+      console.log("Candidate hidden in results page:", event.detail);
+      loadResults();
+    }
+    
+    window.addEventListener('candidateHidden', handleCandidateHidden as EventListener)
+    
+    return () => {
+      window.removeEventListener('candidateHidden', handleCandidateHidden as EventListener)
+    }
   }, [contract])
 
   if (isLoading || contractLoading) {
