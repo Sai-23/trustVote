@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Candidate } from "@/lib/contract";
 
 interface VoterRequest {
   address: string;
@@ -21,7 +23,7 @@ interface VoterRequest {
 }
 
 export default function AdminPage() {
-  const { contract, isLoading: contractLoading } = useVotingContract();
+  const { contract, isLoading: contractLoading, totalCandidates } = useVotingContract();
   const { account, isConnected, isAdmin } = useWallet();
 
   const [votingActive, setVotingActive] = useState(false);
@@ -29,6 +31,9 @@ export default function AdminPage() {
   const [voterRequests, setVoterRequests] = useState<VoterRequest[]>([]);
   const [selectedVoters, setSelectedVoters] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [newCandidateName, setNewCandidateName] = useState("");
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
 
   useEffect(() => {
     if (!contract) return;
@@ -83,6 +88,47 @@ export default function AdminPage() {
 
     fetchVoterRequests();
   }, []);
+
+  useEffect(() => {
+    if (!contract) return;
+
+    const loadCandidates = async () => {
+      try {
+        setLoadingCandidates(true);
+        const candidateCount = await contract.totalCandidates();
+        const candidatesArray: Candidate[] = [];
+
+        for (let i = 0; i < candidateCount; i++) {
+          const candidate = await contract.candidates(i);
+          candidatesArray.push({
+            id: Number(candidate.id),
+            name: candidate.name,
+            voteCount: Number(candidate.voteCount)
+          });
+        }
+
+        setCandidates(candidatesArray);
+      } catch (error) {
+        console.error("Error loading candidates:", error);
+        toast.error("Failed to load candidates");
+      } finally {
+        setLoadingCandidates(false);
+      }
+    };
+
+    loadCandidates();
+
+    // Set up event listener for candidate added
+    const candidateAddedListener = () => {
+      loadCandidates();
+    };
+
+    contract.on("CandidateAdded", candidateAddedListener);
+
+    return () => {
+      contract.off("CandidateAdded", candidateAddedListener);
+    };
+  }, [contract]);
 
   const handleToggleVoting = async () => {
     if (!contract) return;
@@ -194,6 +240,30 @@ export default function AdminPage() {
     );
   };
 
+  const handleAddCandidate = async () => {
+    if (!contract || !newCandidateName.trim()) return;
+
+    try {
+      setIsProcessing(true);
+      const tx = await contract.addCandidate(newCandidateName.trim());
+      await tx.wait();
+      
+      toast.success(`Candidate "${newCandidateName}" added successfully`);
+      setNewCandidateName("");
+    } catch (error: any) {
+      console.error("Error adding candidate:", error);
+      let errorMessage = "Failed to add candidate";
+
+      if (error.message.includes("Only admin")) {
+        errorMessage = "Only admin can add candidates";
+      }
+
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (!isConnected || !isAdmin) {
     return (
       <div className="container mx-auto px-4 py-12">
@@ -251,12 +321,13 @@ export default function AdminPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
             Admin Dashboard
           </h1>
-          <p className="text-gray-600">Manage voters and voting process</p>
+          <p className="text-gray-600">Manage voters, candidates, and voting process</p>
         </div>
 
         <Tabs defaultValue="voters" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="voters">Voter Registration</TabsTrigger>
+            <TabsTrigger value="candidates">Candidates</TabsTrigger>
             <TabsTrigger value="voting">Voting Control</TabsTrigger>
           </TabsList>
 
@@ -304,6 +375,62 @@ export default function AdminPage() {
                   </Button>
                 </div>
               )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="candidates">
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4">Manage Candidates</h2>
+              
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-800">Add New Candidate</h3>
+                  <div className="flex gap-3">
+                    <Input
+                      placeholder="Enter candidate name"
+                      value={newCandidateName}
+                      onChange={(e) => setNewCandidateName(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button 
+                      onClick={handleAddCandidate} 
+                      disabled={isProcessing || !newCandidateName.trim()}
+                    >
+                      {isProcessing ? "Adding..." : "Add Candidate"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-800">Current Candidates</h3>
+                  
+                  {loadingCandidates ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  ) : candidates.length === 0 ? (
+                    <p className="text-gray-600 text-center py-8">No candidates added yet</p>
+                  ) : (
+                    <div className="grid gap-3">
+                      {candidates.map((candidate) => (
+                        <div 
+                          key={candidate.id} 
+                          className="p-4 bg-gray-50 rounded-lg flex justify-between items-center"
+                        >
+                          <div>
+                            <p className="font-medium">{candidate.name}</p>
+                            <p className="text-sm text-gray-500">
+                              ID: {candidate.id} | Votes: {candidate.voteCount}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </Card>
           </TabsContent>
 
