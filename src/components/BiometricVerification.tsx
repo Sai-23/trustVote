@@ -26,6 +26,7 @@ export function BiometricVerification({
   const [progress, setProgress] = useState(0)
   const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [demoMode, setDemoMode] = useState(false)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -54,24 +55,42 @@ export function BiometricVerification({
     try {
       setError(null)
       
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: "user"
-        },
-        audio: false
-      })
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        streamRef.current = stream
+      // Try to access camera
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: "user"
+          },
+          audio: false
+        })
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          streamRef.current = stream
+        }
+        
+        setIsCameraOpen(true)
+        setDemoMode(false)
+      } catch (err) {
+        console.warn("Camera access failed, switching to demo mode:", err)
+        setDemoMode(true)
+        setIsCameraOpen(true)
+        // Use a timer to simulate camera startup
+        setTimeout(() => {
+          setCapturedImage("/demo-face.jpg")
+        }, 500)
       }
-      
-      setIsCameraOpen(true)
     } catch (error: any) {
-      console.error("Error accessing camera:", error)
-      setError(error.message || "Failed to access camera. Please make sure you have granted camera permissions.")
+      console.error("Error in camera setup:", error)
+      setError("Camera initialization failed. Using demo mode.")
+      setDemoMode(true)
+      setIsCameraOpen(true)
+      // Use a timer to simulate camera startup in demo mode
+      setTimeout(() => {
+        setCapturedImage("/demo-face.jpg")
+      }, 500)
     }
   }
 
@@ -92,54 +111,85 @@ export function BiometricVerification({
     if (videoRef.current) {
       videoRef.current.play().catch(err => {
         console.error("Error playing video:", err)
-        setError("Failed to start video stream. Please try again.")
+        setError("Failed to start video stream. Using demo mode.")
+        setDemoMode(true)
+        // Use a timer to simulate camera startup in demo mode
+        setTimeout(() => {
+          setCapturedImage("/demo-face.jpg")
+        }, 500)
       })
     }
   }
 
   const captureFace = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return
+    if (demoMode) {
+      // In demo mode, we already have the image
+      verifyFace(capturedImage || "/demo-face.jpg")
+      return
+    }
+    
+    if (!videoRef.current || !canvasRef.current) {
+      // Fallback to demo if refs aren't available
+      setDemoMode(true)
+      setCapturedImage("/demo-face.jpg")
+      verifyFace("/demo-face.jpg")
+      return
+    }
 
     const video = videoRef.current
     const canvas = canvasRef.current
     const context = canvas.getContext('2d')
     
-    if (!context) return
+    if (!context) {
+      // Fallback to demo if canvas context isn't available
+      setDemoMode(true)
+      setCapturedImage("/demo-face.jpg")
+      verifyFace("/demo-face.jpg")
+      return
+    }
     
     // Set canvas dimensions to match video
     canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
     
     // Draw video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-    
-    // Get image data as base64
-    const imageData = canvas.toDataURL('image/jpeg')
-    setCapturedImage(imageData)
-    
-    // Simulate verification
-    verifyFace(imageData)
+    try {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      
+      // Get image data as base64
+      const imageData = canvas.toDataURL('image/jpeg')
+      setCapturedImage(imageData)
+      
+      // Verify face
+      verifyFace(imageData)
+    } catch (err) {
+      console.error("Error capturing image:", err)
+      // Fallback to demo
+      setDemoMode(true)
+      setCapturedImage("/demo-face.jpg")
+      verifyFace("/demo-face.jpg")
+    }
     
     // Close camera
     closeCamera()
-  }, [])
+  }, [demoMode, capturedImage])
 
   const verifyFace = (imageData: string) => {
     setIsVerifying(true)
     setError(null)
     
-    // In a real system, this would send the image to a server for comparison
-    // For demo, we'll simulate verification with the stored face data
-    
     // Create a timeout to simulate processing
     timeoutRef.current = setTimeout(() => {
-      // Convert captured image to a similar format as stored data for comparison
-      const base64Data = imageData.split(',')[1]
-      const binaryData = atob(base64Data)
+      // In demo mode, always succeed
+      if (demoMode) {
+        setIsFaceVerified(true)
+        setActiveTab("fingerprint") // Automatically move to next verification
+        setIsVerifying(false)
+        return
+      }
       
-      // Simple matching for demo
-      // In production, you would use a proper face recognition API
-      const randomSuccess = Math.random() > 0.2 // 80% success rate for demo
+      // For non-demo mode, high success rate for demonstration
+      const randomSuccess = Math.random() > 0.1 // 90% success rate
       
       if (randomSuccess) {
         setIsFaceVerified(true)
@@ -157,6 +207,7 @@ export function BiometricVerification({
     setCapturedImage(null)
     setIsFaceVerified(false)
     setError(null)
+    setDemoMode(false)
   }
 
   // Fingerprint verification section
@@ -173,8 +224,8 @@ export function BiometricVerification({
       })
     }, 200)
     
-    // Complete scan after random time (2-3.5 seconds)
-    const scanTime = 2000 + Math.random() * 1500
+    // Complete scan after 2-3 seconds
+    const scanTime = 2000 + Math.random() * 1000
     timeoutRef.current = setTimeout(() => {
       clearInterval(interval)
       setProgress(100)
@@ -186,14 +237,10 @@ export function BiometricVerification({
     setIsVerifying(true)
     setError(null)
     
-    // In a real system, this would compare fingerprint data
-    // For demo, we'll simulate verification with the stored fingerprint data
-    
     // Create a timeout to simulate processing
     timeoutRef.current = setTimeout(() => {
-      // Simple matching for demo
-      // In production, you would use a proper fingerprint matching API
-      const randomSuccess = Math.random() > 0.2 // 80% success rate for demo
+      // For demo purposes, use high success rate
+      const randomSuccess = Math.random() > 0.1 // 90% success rate
       
       if (randomSuccess) {
         setIsFingerprintVerified(true)
@@ -215,6 +262,14 @@ export function BiometricVerification({
     setError(null)
   }
 
+  // Demo mode functions
+  const useDemoMode = () => {
+    setDemoMode(true)
+    setError(null)
+    setCapturedImage("/demo-face.jpg")
+    setIsCameraOpen(true)
+  }
+
   return (
     <Card className="p-4">
       <h2 className="text-xl font-semibold text-center mb-4">Biometric Verification</h2>
@@ -233,6 +288,16 @@ export function BiometricVerification({
           {error && (
             <div className="text-sm text-red-500 p-2 bg-red-50 rounded-md">
               {error}
+              {!demoMode && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={useDemoMode}
+                  className="ml-2 text-blue-500 p-0 h-auto"
+                >
+                  Use Demo Mode
+                </Button>
+              )}
             </div>
           )}
           
@@ -263,11 +328,27 @@ export function BiometricVerification({
           ) : capturedImage ? (
             <div className="space-y-4">
               <div className="rounded-md overflow-hidden">
-                <img
-                  src={capturedImage}
-                  alt="Captured face"
-                  className="w-full h-auto max-h-60 object-contain"
-                />
+                {demoMode ? (
+                  <div className="bg-gray-200 w-full h-60 flex items-center justify-center">
+                    <img
+                      src={capturedImage}
+                      alt="Demo face"
+                      className="max-h-60 object-contain"
+                      onError={(e) => {
+                        // If image fails to load, show placeholder
+                        const target = e.target as HTMLImageElement;
+                        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='40' r='25' fill='%23ccc'/%3E%3Ccircle cx='50' cy='110' r='50' fill='%23ccc'/%3E%3C/svg%3E";
+                        target.alt = "Demo face placeholder";
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <img
+                    src={capturedImage}
+                    alt="Captured face"
+                    className="w-full h-auto max-h-60 object-contain"
+                  />
+                )}
               </div>
               <div className="flex justify-center gap-2">
                 <Button
@@ -277,6 +358,12 @@ export function BiometricVerification({
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Retake
+                </Button>
+                <Button
+                  onClick={captureFace}
+                  className="flex-1"
+                >
+                  Verify Face
                 </Button>
               </div>
             </div>
@@ -291,15 +378,24 @@ export function BiometricVerification({
                 >
                   <X size={18} />
                 </Button>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  onLoadedMetadata={handleVideoLoaded}
-                  className="w-full h-auto"
-                  style={{ maxHeight: '300px', objectFit: 'contain' }}
-                />
+                {demoMode ? (
+                  <div className="bg-gray-200 w-full h-60 flex items-center justify-center">
+                    <Camera size={48} className="text-gray-400 animate-pulse" />
+                    <p className="absolute bottom-4 text-center w-full text-gray-700 bg-gray-100 bg-opacity-80 py-1">
+                      Demo Mode - Camera Simulation
+                    </p>
+                  </div>
+                ) : (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    onLoadedMetadata={handleVideoLoaded}
+                    className="w-full h-auto"
+                    style={{ maxHeight: '300px', objectFit: 'contain' }}
+                  />
+                )}
               </div>
               <Button onClick={captureFace} className="w-full">
                 Capture Face
@@ -310,13 +406,22 @@ export function BiometricVerification({
               <p className="text-gray-600 text-center">
                 We need to verify your identity before you can vote. Please scan your face to continue.
               </p>
-              <Button
-                onClick={openCamera}
-                className="w-full flex items-center justify-center gap-2"
-              >
-                <Camera size={18} />
-                Start Face Verification
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  onClick={openCamera}
+                  className="flex-1 flex items-center justify-center gap-2"
+                >
+                  <Camera size={18} />
+                  Start Face Verification
+                </Button>
+                <Button
+                  onClick={useDemoMode}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Use Demo Mode
+                </Button>
+              </div>
             </div>
           )}
         </TabsContent>
