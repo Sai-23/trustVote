@@ -46,16 +46,32 @@ export default function RequestVoterPage() {
         const voter = await contract.voters(account);
         setIsRegistered(voter.isRegistered);
 
-        // Check if there's a pending request
-        const existingData = localStorage.getItem(STORAGE_KEY);
-        const requests: VoterRequest[] = existingData
-          ? JSON.parse(existingData)
-          : [];
-        setHasRequestPending(
-          requests.some(
-            (req) => req.address.toLowerCase() === account.toLowerCase()
-          )
-        );
+        // Check if there's a pending request via API
+        try {
+          const response = await fetch("/api/voters");
+          if (response.ok) {
+            const requests = await response.json();
+            setHasRequestPending(
+              requests.some(
+                (req: any) =>
+                  req.address.toLowerCase() === account.toLowerCase() &&
+                  req.status === "pending"
+              )
+            );
+          }
+        } catch (apiError) {
+          console.error("Error checking pending requests:", apiError);
+          // Fallback to localStorage for backward compatibility
+          const existingData = localStorage.getItem(STORAGE_KEY);
+          const requests: VoterRequest[] = existingData
+            ? JSON.parse(existingData)
+            : [];
+          setHasRequestPending(
+            requests.some(
+              (req) => req.address.toLowerCase() === account.toLowerCase()
+            )
+          );
+        }
 
         setIsLoading(false);
       } catch (error) {
@@ -67,6 +83,98 @@ export default function RequestVoterPage() {
 
     checkVoterStatus();
   }, [account, contract]);
+
+  // Add a function for the success path to handle the final registration steps
+  const completeRegistration = async () => {
+    try {
+      // Check if already registered as a voter
+      if (!contract || !account) {
+        toast.error("Failed to check voter status");
+        return;
+      }
+
+      try {
+        const voter = await contract.voters(account);
+        if (voter.isRegistered) {
+          toast.error("This wallet is already registered as a voter");
+          return;
+        }
+      } catch (contractError) {
+        console.error("Error checking voter status:", contractError);
+        // Continue with registration even if contract check fails
+      }
+
+      // Submit request to API
+      const requestData = {
+        address: account,
+        faceData,
+        fingerprintData,
+        aadharNumber,
+        phoneNumber,
+      };
+
+      const response = await fetch("/api/voters", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || "Failed to submit registration request"
+        );
+      }
+
+      const result = await response.json();
+
+      // For backward compatibility, also store in localStorage
+      try {
+        const existingData = localStorage.getItem(STORAGE_KEY);
+        const requests: VoterRequest[] = existingData
+          ? JSON.parse(existingData)
+          : [];
+
+        // Check if address already requested
+        if (
+          requests.some(
+            (req) => req.address.toLowerCase() === account.toLowerCase()
+          )
+        ) {
+          // Already in localStorage, no need to add
+        } else {
+          // Add new request to localStorage
+          const newRequest: VoterRequest = {
+            address: account,
+            timestamp: Date.now(),
+            faceData,
+            fingerprintData,
+            aadharNumber,
+            phoneNumber,
+          };
+          requests.push(newRequest);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
+        }
+      } catch (storageError) {
+        console.error("Error updating localStorage:", storageError);
+        // Continue since the API request was successful
+      }
+
+      toast.success(
+        "Registration request submitted successfully! Please wait for admin approval."
+      );
+      setHasRequestPending(true);
+    } catch (error) {
+      console.error("Error submitting request:", error);
+      toast.error(
+        "Failed to submit registration request: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+      throw error; // Re-throw for the caller
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,60 +202,6 @@ export default function RequestVoterPage() {
       toast.error("Please enter a valid 10-digit phone number");
       return;
     }
-
-    // Add a function for the success path to handle the final registration steps
-    const completeRegistration = async () => {
-      // Get existing requests
-      const existingData = localStorage.getItem(STORAGE_KEY);
-      const requests: VoterRequest[] = existingData
-        ? JSON.parse(existingData)
-        : [];
-
-      // Check if address already requested
-      if (
-        requests.some(
-          (req) => req.address.toLowerCase() === account.toLowerCase()
-        )
-      ) {
-        toast.error("You have already submitted a registration request");
-        return;
-      }
-
-      // Check if already registered as a voter
-      if (!contract) {
-        toast.error("Failed to check voter status");
-        return;
-      }
-
-      try {
-        const voter = await contract.voters(account);
-        if (voter.isRegistered) {
-          toast.error("This wallet is already registered as a voter");
-          return;
-        }
-      } catch (contractError) {
-        console.error("Error checking voter status:", contractError);
-        // Continue with registration even if contract check fails
-      }
-
-      // Add new request
-      const newRequest: VoterRequest = {
-        address: account,
-        timestamp: Date.now(),
-        faceData: faceData,
-        fingerprintData: fingerprintData,
-        aadharNumber: aadharNumber,
-        phoneNumber: phoneNumber,
-      };
-
-      requests.push(newRequest);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
-
-      toast.success(
-        "Registration request submitted successfully! Please wait for admin approval."
-      );
-      setHasRequestPending(true);
-    };
 
     try {
       setIsSubmitting(true);
@@ -237,10 +291,8 @@ export default function RequestVoterPage() {
         console.log("Authentication successful:", authResponse);
         toast.success("Biometric authentication successful!");
 
-        // Authentication was successful, delay before proceeding
-        setTimeout(() => {
-          completeRegistration();
-        }, 1000); // Add a small delay for better UX
+        // After successful authentication, call the registration handler
+        await completeRegistration();
       } catch (apiError) {
         // Fallback to POST request if GET fails
         console.log("Trying POST request as fallback");
@@ -281,10 +333,8 @@ export default function RequestVoterPage() {
 
             toast.success("Biometric authentication successful!");
 
-            // Authentication was successful, delay before proceeding
-            setTimeout(() => {
-              completeRegistration();
-            }, 1000); // Add a small delay for better UX
+            // After successful authentication, call the registration handler
+            await completeRegistration();
           }
         } catch (postError) {
           // If the error message contains "successful", it's actually a success
@@ -297,10 +347,8 @@ export default function RequestVoterPage() {
             );
             toast.success("Biometric authentication successful!");
 
-            // Authentication was successful, delay before proceeding
-            setTimeout(() => {
-              completeRegistration();
-            }, 1000); // Add a small delay for better UX
+            // After successful authentication, call the registration handler
+            await completeRegistration();
           } else {
             console.error("POST request failed:", postError);
             toast.error(
